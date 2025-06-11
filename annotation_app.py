@@ -3,7 +3,6 @@ import os
 import yaml
 from streamlit_drawable_canvas import st_canvas
 from PIL import Image
-import cv2
 import numpy as np
 
 # Configure Streamlit page
@@ -41,12 +40,30 @@ def create_box(x1, y1, x2, y2, box_id, is_original=True):
         'top': y1,
         'width': x2 - x1,
         'height': y2 - y1,
-        'stroke': '#00FF00',  # Explicit stroke property for outline
-        'fill': 'rgba(0, 255, 0, 0)',  # Explicit fill property for transparent fill
+        'stroke': '#00FF00',
+        'fill': 'rgba(0, 255, 0, 0)',
         'strokeWidth': 2,
         'box_id': box_id,
         'is_original': is_original
     }
+
+def create_text_label(x, y, text):
+    """Create a non-editable, locked text label object"""
+    return {
+        'type': 'text',
+        'left': x,
+        'top': y,
+        'text': text,
+        'fontSize': 12,            # set font size numerically
+        'fontFamily': 'Arial',     # set font family
+        'fill': '#00FF00',
+        'box_id': text,
+        'editable': False,
+        'lockScalingX': True,
+        'lockScalingY': True,
+        'hasControls': False
+    }
+
 
 # Load metadata YAML
 if not os.path.exists(metadata_file):
@@ -87,15 +104,12 @@ with col2:
     selected_image = image_files[st.session_state.current_idx]
     selected_image_path = os.path.join(image_dir, selected_image)
 
-    # Load and prepare image
     image = Image.open(selected_image_path)
     img_width, img_height = image.size
     st.session_state.img_width = img_width
     st.session_state.img_height = img_height
 
-    # Load existing annotations
-    existing_boxes = []
-    box_labels = []
+    canvas_objects = []
     label_path = os.path.join(false_neg_labels_dir, selected_image.replace('.jpg', '.txt'))
     if os.path.exists(label_path):
         with open(label_path, 'r') as f:
@@ -107,10 +121,11 @@ with col2:
                     y1 = (y_center - h / 2) * img_height
                     x2 = (x_center + w / 2) * img_width
                     y2 = (y_center + h / 2) * img_height
-                    existing_boxes.append(create_box(x1, y1, x2, y2, f"Box {i+1}", is_original=True))
-                    box_labels.append('Person' if int(cls) == 0 else 'Car')
 
-    # Drawing mode selector
+                    box_id = f"Box {i+1}"
+                    canvas_objects.append(create_box(x1, y1, x2, y2, box_id))
+                    canvas_objects.append(create_text_label(x1 + 4, max(2, y1 - 14), box_id))
+
     drawing_mode = st.radio(
         "Drawing Mode:",
         ["Transform", "Draw New Box"],
@@ -118,37 +133,58 @@ with col2:
         key="drawing_mode"
     )
 
-    # Canvas
     canvas_result = st_canvas(
-        fill_color="rgba(0, 255, 0, 0)",  # Completely transparent
+        fill_color="rgba(0, 255, 0, 0)",
         stroke_width=2,
-        stroke_color="#00ff00",  # Green outline
+        stroke_color="#00ff00",
         background_image=image,
         height=img_height,
         width=img_width,
         drawing_mode="rect" if drawing_mode == "Draw New Box" else "transform",
-        initial_drawing={"objects": existing_boxes},
-        key="canvas",
+        initial_drawing={"objects": canvas_objects},
+        key="canvas"
     )
 
     st.session_state.canvas_result = canvas_result
+
+    selected_idx = canvas_result.json_data.get("selectedObjectIndex", None)
+    if selected_idx is not None and selected_idx >= 0:
+        selected_obj = canvas_result.json_data["objects"][selected_idx]
+        if selected_obj["type"] == "rect":
+            st.warning(f"Selected: {selected_obj.get('box_id', f'Box {selected_idx+1}')}")
+            if st.button("🗑️ Delete Selected Box"):
+                # Remove both rect and its corresponding text label
+                del_box_id = selected_obj.get("box_id")
+                new_objects = [
+                    o for o in canvas_result.json_data["objects"]
+                    if o != selected_obj and o.get("box_id") != del_box_id
+                ]
+                canvas_result.json_data["objects"] = new_objects
+                st.experimental_rerun()
 
 # Column 3: Label controls + Save
 with col3:
     st.subheader("Labels")
     label_options = ['Person', 'Car']
 
-    labels_per_box = []
     if 'canvas_result' in st.session_state and st.session_state.canvas_result.json_data is not None:
         objects = st.session_state.canvas_result.json_data.get("objects", [])
+
+        updated_objects = []
+        labels_per_box = []
+        box_counter = 1
+
         for i, obj in enumerate(objects):
             if obj["type"] == "rect":
-                box_id = obj.get("box_id", f"Box {i+1}")
-                st.write(f"**{box_id}**")
-                
-                # Create columns for label and delete button
+                if "box_id" not in obj:
+                    obj["box_id"] = f"Box {box_counter}"
+                    box_counter += 1
+                box_id = obj["box_id"]
+
+                st.markdown(f"**🟩 {box_id}**")
+
                 label_col, delete_col = st.columns([3, 1])
-                
+
                 with label_col:
                     selected_label = st.selectbox(
                         f"Label for {box_id}",
@@ -156,20 +192,29 @@ with col3:
                         key=f"label_{i}"
                     )
                     labels_per_box.append(selected_label)
-                
-                # Show delete button only for non-original boxes
-                if not obj.get("is_original", False):
-                    with delete_col:
-                        if st.button("🗑️", key=f"delete_{i}"):
-                            # Remove the box from the canvas
-                            objects.pop(i)
-                            st.experimental_rerun()
+                    
+                with delete_col:   
+                    if st.button("🗑️", key=f"delete_sidebar_{i}"):
+                        del_box_id = obj["box_id"]
+                        new_objects = [
+                            o for o in objects
+                            if o.get("box_id") != del_box_id
+                        ]
+                        st.session_state.canvas_result.json_data["objects"] = new_objects
+                        st.experimental_rerun()
 
-        if len(objects) > 0 and st.button("💾 Save Annotations"):
+
+                
+                   
+                updated_objects.append(obj)
+
+        st.session_state.canvas_result.json_data["objects"] = updated_objects
+
+        if len(updated_objects) > 0 and st.button("💾 Save Annotations"):
             new_annotations = []
             yolo_lines = []
 
-            for i, obj in enumerate(objects):
+            for i, obj in enumerate(updated_objects):
                 if obj["type"] == "rect":
                     left, top = obj["left"], obj["top"]
                     width, height = obj["width"], obj["height"]
@@ -187,14 +232,11 @@ with col3:
                         'bbox': [x_center, y_center, w_norm, h_norm]
                     })
 
-            # Save to YOLO txt
             with open(label_path, 'w') as f:
                 f.writelines(yolo_lines)
 
-            # Save to YAML
             corrected_file = os.path.join(corrected_ann_dir, selected_image.replace('.jpg', '.yaml'))
             with open(corrected_file, 'w') as f:
                 yaml.dump(new_annotations, f)
 
             st.success("✅ Annotations saved successfully!")
-
