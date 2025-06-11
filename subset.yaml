@@ -1,0 +1,5 @@
+train: datasets/subset/train/images
+val: datasets/val/images
+
+nc: 5
+names: ["Person", "Car", "Bicycle", "OtherVehicle", "DontCare"]

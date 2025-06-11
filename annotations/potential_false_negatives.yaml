@@ -1,0 +1,18 @@
+- detections:
+  - bbox:
+    - 240.14495849609375
+    - 214.74655151367188
+    - 270.31231689453125
+    - 239.76840209960938
+    confidence: 0.34407615661621094
+    label: Car
+  image_path: /Users/disha/Downloads/automate_annotation/datasets/test_subset/0_130_30_0_05573.jpg
+- detections:
+  - bbox:
+    - 138.4641571044922
+    - 311.9779052734375
+    - 155.93458557128906
+    - 345.8067626953125
+    confidence: 0.22119808197021484
+    label: Person
+  image_path: /Users/disha/Downloads/automate_annotation/datasets/test_subset/1_70_70_0_07709.jpg
