@@ -5,6 +5,8 @@ import json
 from streamlit_drawable_canvas import st_canvas
 from PIL import Image
 import datetime
+import base64
+from io import BytesIO
 
 # Configure Streamlit page
 st.set_page_config(page_title="Infrared Annotation Tool", layout="wide")
@@ -32,6 +34,8 @@ json_tracking_file = 'annotations/box_changes.json'
 os.makedirs(false_neg_labels_dir, exist_ok=True)
 os.makedirs(corrected_ann_dir, exist_ok=True)
 os.makedirs(os.path.dirname(json_tracking_file), exist_ok=True)
+
+
 
 def create_box(x1, y1, x2, y2, box_id, is_original=True):
     return {
@@ -97,6 +101,19 @@ def save_to_json(image_path, objects, labels):
     except Exception as e:
         st.error(f"Error saving to JSON: {str(e)}")
         return False
+    
+def delete_box_from_canvas(box_id):
+    try:
+        objects = st.session_state.get("canvas_result").json_data.get("objects", [])
+        new_objects = [o for o in objects if o.get("box_id") != box_id]
+        st.session_state['canvas_objects'] = new_objects  # update session state
+        st.session_state["canvas_key"] += 1  # force canvas refresh
+        st.session_state["delete_success"] = True
+        return True
+    except Exception as e:
+        st.error(f"Error deleting {box_id}: {str(e)}")
+        return False
+    
 
 # Load metadata YAML
 if not os.path.exists(metadata_file):
@@ -122,22 +139,43 @@ if len(image_files) == 0:
 # Layout: sidebar for thumbnails, main canvas, label controls
 col1, col2, col3 = st.columns([1, 3, 1])
 
+# Initialize session state variables
+if "current_idx" not in st.session_state:
+    st.session_state["current_idx"] = 0
+
+# Now it's safe to use
+selected_image_path = image_files[st.session_state.current_idx]
+
 # Column 1: Image thumbnails
 with col1:
     st.subheader("Images")
-    if 'current_idx' not in st.session_state:
-        st.session_state.current_idx = 0
-    for i, img_path in enumerate(image_files):
-        try:
-            img = Image.open(img_path)
-            scale = min(1.0, 100 / img.size[0])
-            thumb = img.resize((int(img.size[0] * scale), int(img.size[1] * scale)))
-            st.image(thumb, use_column_width=True)
-            if st.button(f"Select Image {i+1}", key=f"btn_{i}"):
-                st.session_state.current_idx = i
-                st.rerun()
-        except Exception as e:
-            st.error(f"Error loading image {img_path}: {str(e)}")
+
+    num_images = len(image_files)
+    thumb_size = 80  # default thumbnail size in px
+
+    if num_images > 12:
+        thumb_size = 60
+    elif num_images > 20:
+        thumb_size = 50
+
+    cols = st.columns(3)  # Adjust grid layout — 3 images per row for example
+
+    for idx, img_path in enumerate(image_files):
+        with cols[idx % 3]:
+            try:
+                img = Image.open(img_path)
+                img.thumbnail((thumb_size, thumb_size))
+
+                # Show image thumbnail
+                st.image(img, use_column_width=True)
+
+                # Select button
+                if st.button(f"Select {idx+1}", key=f"thumb_{idx}"):
+                    st.session_state.current_idx = idx
+                    st.session_state["canvas_key"] += 1  # refresh canvas too
+                    st.rerun()
+            except Exception as e:
+                st.write(f"Error loading {img_path}")
 
 # Column 2: Annotation canvas
 with col2:
@@ -261,4 +299,14 @@ with col3:
             except Exception as e:
                 st.error(f"Error saving annotations: {str(e)}")
 
-    
+    # Add delete button in column 3
+    st.markdown(f"<div style='text-align:center; margin-top: 10px;'><b>Delete a box:</b></div>", unsafe_allow_html=True)
+    if st.button("🗑️ Delete Selected Box", key="delete_selected_box_col3"):
+        if (
+            st.session_state.get('drawing_mode', 'Transform') == "Transform"
+            and selected_box_id is not None
+        ):
+            if delete_box_from_canvas(selected_box_id):
+                st.experimental_rerun()
+        else:
+            st.warning("Please select a box in Transform mode to delete.")
