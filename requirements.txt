@@ -1,5 +1,4 @@
 ultralytics
-numpy==1.26.4
 opencv-python
 torch
 torchvision
@@ -7,3 +6,5 @@ pyyaml==6.0.1
 pillow==10.3.0
 streamlit==1.33.0
 streamlit-drawable-canvas==0.9.3
+flask
+label-studio

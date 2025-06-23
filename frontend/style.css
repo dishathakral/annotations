@@ -1,0 +1,25 @@
+body {
+  font-family: Arial, sans-serif;
+  margin: 40px;
+  background: #f7f7f7;
+}
+h1 {
+  color: #333;
+}
+button {
+  padding: 10px 20px;
+  font-size: 16px;
+  margin-bottom: 20px;
+}
+#projectList {
+  margin-top: 20px;
+}
+.project-link {
+  color: #1976d2;
+  cursor: pointer;
+  text-decoration: underline;
+}
+.project-link:hover {
+  color: #0d47a1;
+  background: #e3f2fd;
+}
