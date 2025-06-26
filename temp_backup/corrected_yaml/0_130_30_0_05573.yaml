@@ -1,8 +1,0 @@
-annotations:
-- bbox:
-  - 0.39375
-  - 0.4365234375
-  - 0.096875
-  - 0.099609375
-  label: Person
-image: /Users/disha/Downloads/automate_annotation/datasets/test_subset/0_130_30_0_05573.jpg

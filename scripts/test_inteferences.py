@@ -1,22 +1,25 @@
-from ultralytics import YOLO
+import json
 import os
+from ultralytics import YOLO
 
-# Load your trained model
-model = YOLO('model/baseline.pt')
+# Load your JSON file
+with open('backend\projects\gg\subset_1\subset_1.json') as f:
+    data = json.load(f)
 
-# Path to test images
-test_dir = 'datasets/test_subset'
+image_names = data['images']
 
-# Run inference on test images
-for img_name in os.listdir(test_dir):
-    img_path = os.path.join(test_dir, img_name)
-    
-    # Run inference
-    results = model.predict(source=img_path, save=True, conf=0.2)
-    
-    # Print results
-    print(f"\nResults for {img_name}:")
-    for result in results:
-        print(result)
+# Path to your images folder
+images_dir = 'backend/projects/gg/images/'
 
-print("Inference test completed.")
+# Build full image paths
+image_paths = [os.path.join(images_dir, name) for name in image_names]
+
+# Load pretrained YOLO model
+model = YOLO('yolov8n.pt')
+
+# Run predictions on each image
+for img_path in image_paths:
+    if os.path.exists(img_path):  # check if image exists
+        model.predict(source=img_path, save=True, conf=0.3)
+    else:
+        print(f"Image not found: {img_path}")

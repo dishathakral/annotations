@@ -2,12 +2,22 @@ from flask import Flask, request, jsonify, send_from_directory
 import os
 import zipfile
 from flask_cors import CORS
+import random
+import json
 
 app = Flask(__name__)
 CORS(app)
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECTS_DIR = os.path.join(BASE_DIR, 'projects')
 os.makedirs(PROJECTS_DIR, exist_ok=True)
+
+# In-memory store for auto-annotate requests
+AUTO_ANNOTATE_REQUESTS = {}
+
+# Add this route for the root URL
+@app.route('/')
+def home():
+    return "Backend is running!"
 
 @app.route('/api/projects', methods=['GET'])
 def list_projects():
@@ -16,7 +26,7 @@ def list_projects():
 
 @app.route('/api/projects', methods=['POST'])
 def create_project():
-    data = request.json
+    data = request.get_json() or {}
     project_name = data.get('project_name')
     if not project_name:
         return jsonify({'error': 'No project name provided'}), 400
@@ -58,6 +68,155 @@ def list_images(project_name):
         return jsonify([])
     files = [f for f in os.listdir(images_dir) if os.path.isfile(os.path.join(images_dir, f))]
     return jsonify(files)
+
+@app.route('/api/projects/<project_name>/save_annotations', methods=['POST'])
+def save_annotations(project_name):
+    data = request.get_json()
+    if not data or 'images' not in data:
+        return jsonify({'error': 'Invalid annotation data'}), 400
+    project_dir = os.path.join(PROJECTS_DIR, project_name)
+    if not os.path.exists(project_dir):
+        return jsonify({'error': 'Project does not exist'}), 404
+    out_path = os.path.join(project_dir, 'manual_annotations.json')
+    try:
+        with open(out_path, 'w', encoding='utf-8') as f:
+            json.dump(data, f, indent=2)
+        return jsonify({'message': 'Annotations saved successfully!'})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/projects/<project_name>/save_annotation', methods=['POST'])
+def save_single_annotation(project_name):
+    data = request.get_json()
+    if not data or 'file_name' not in data or 'width' not in data or 'height' not in data or 'annotations' not in data:
+        return jsonify({'error': 'Invalid annotation data'}), 400
+    project_dir = os.path.join(PROJECTS_DIR, project_name)
+    if not os.path.exists(project_dir):
+        return jsonify({'error': 'Project does not exist'}), 404
+    out_path = os.path.join(project_dir, 'manual_annotations.json')
+    # Load existing annotations.json or create new structure
+    if os.path.exists(out_path):
+        with open(out_path, 'r', encoding='utf-8') as f:
+            all_data = json.load(f)
+    else:
+        all_data = {"images": {}, "categories": []}
+    # Update or add the image annotation
+    all_data["images"][data['file_name']] = {
+        "width": data['width'],
+        "height": data['height'],
+        "annotations": data['annotations']
+    }
+    # Update categories if new labels are present
+    for ann in data['annotations']:
+        label = ann.get('label') or ann.get('category')
+        if label and label not in all_data['categories']:
+            all_data['categories'].append(label)
+    # Save back
+    with open(out_path, 'w', encoding='utf-8') as f:
+        json.dump(all_data, f, indent=2)
+    return jsonify({'message': f"Annotation for {data['file_name']} saved!"})
+
+@app.route('/api/projects/<project_name>/images', methods=['GET'])
+def get_project_images(project_name):
+    images_dir = os.path.join(PROJECTS_DIR, project_name, 'images')
+    if not os.path.exists(images_dir):
+        return jsonify([])
+    files = [f for f in os.listdir(images_dir) if os.path.isfile(os.path.join(images_dir, f))]
+    return jsonify(files)
+
+# API: Get images in project
+@app.route('/api/projects/<project_name>/images', methods=['GET'])
+def get_images(project_name):
+    images_dir = os.path.join(PROJECTS_DIR, project_name, 'images')
+    if not os.path.exists(images_dir):
+        return jsonify([])
+
+    files = [f for f in os.listdir(images_dir) if os.path.isfile(os.path.join(images_dir, f))]
+    return jsonify(files)
+
+@app.route('/api/projects/<project_name>/auto_annotate_request', methods=['POST'])
+def save_auto_annotate_request(project_name):
+    data = request.get_json() or {}
+    project_dir = os.path.join(PROJECTS_DIR, project_name)
+    if not os.path.exists(project_dir):
+        return jsonify({'error': 'Project does not exist'}), 404
+    images_dir = os.path.join(project_dir, 'images')
+    if not os.path.exists(images_dir):
+        return jsonify({'error': 'Images directory does not exist'}), 404
+    all_images = [f for f in os.listdir(images_dir) if os.path.isfile(os.path.join(images_dir, f))]
+    if not all_images:
+        return jsonify({'error': 'No images found'}), 404
+    # Find next available subset_N folder
+    n = 1
+    while os.path.exists(os.path.join(project_dir, f'subset_{n}')):
+        n += 1
+    subset_dir = os.path.join(project_dir, f'subset_{n}')
+    os.makedirs(subset_dir, exist_ok=True)
+    subset_json_path = os.path.join(subset_dir, f'subset_{n}.json')
+    try:
+        with open(subset_json_path, 'w', encoding='utf-8') as f:
+            json.dump({'images': all_images}, f, indent=2)
+        return jsonify({'message': f'Complete dataset subset created as subset_{n}/{f"subset_{n}.json"} with {len(all_images)} images.'})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/projects/<project_name>/create_manual_subset', methods=['POST'])
+def create_manual_subset(project_name):
+    data = request.get_json() or {}
+    images = data.get('images', [])
+    if not images:
+        return jsonify({'error': 'No images provided'}), 400
+    project_dir = os.path.join(PROJECTS_DIR, project_name)
+    if not os.path.exists(project_dir):
+        return jsonify({'error': 'Project does not exist'}), 404
+    # Find next available subset_N folder
+    n = 1
+    while os.path.exists(os.path.join(project_dir, f'subset_{n}')):
+        n += 1
+    subset_dir = os.path.join(project_dir, f'subset_{n}')
+    os.makedirs(subset_dir, exist_ok=True)
+    subset_json_path = os.path.join(subset_dir, f'subset_{n}.json')
+    try:
+        with open(subset_json_path, 'w', encoding='utf-8') as f:
+            json.dump({'images': images}, f, indent=2)
+        return jsonify({'message': f'Manual subset created as subset_{n}/{f"subset_{n}.json"} with {len(images)} images.'})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/projects/<project_name>/create_random_subset', methods=['POST'])
+def create_random_subset(project_name):
+    data = request.get_json() or {}
+    percent = data.get('percent')
+    if percent is None:
+        return jsonify({'error': 'No percent provided'}), 400
+    try:
+        percent = float(percent)
+        if percent <= 0 or percent > 100:
+            raise ValueError
+    except Exception:
+        return jsonify({'error': 'Invalid percent value'}), 400
+    project_dir = os.path.join(PROJECTS_DIR, project_name)
+    images_dir = os.path.join(project_dir, 'images')
+    if not os.path.exists(images_dir):
+        return jsonify({'error': 'Images directory does not exist'}), 404
+    all_images = [f for f in os.listdir(images_dir) if os.path.isfile(os.path.join(images_dir, f))]
+    if not all_images:
+        return jsonify({'error': 'No images found'}), 404
+    k = max(1, int(len(all_images) * percent / 100.0))
+    selected = random.sample(all_images, k)
+    # Find next available subset_N folder
+    n = 1
+    while os.path.exists(os.path.join(project_dir, f'subset_{n}')):
+        n += 1
+    subset_dir = os.path.join(project_dir, f'subset_{n}')
+    os.makedirs(subset_dir, exist_ok=True)
+    subset_json_path = os.path.join(subset_dir, f'subset_{n}.json')
+    try:
+        with open(subset_json_path, 'w', encoding='utf-8') as f:
+            json.dump({'images': selected}, f, indent=2)
+        return jsonify({'message': f'Random subset created as subset_{n}/{f"subset_{n}.json"} with {len(selected)} images.'})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
     app.run(debug=True)

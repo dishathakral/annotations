@@ -141,6 +141,7 @@ with col1:
 
 # Column 2: Annotation canvas
 with col2:
+    st.markdown('<style>div[data-testid="column"]:nth-child(2) {padding-top: 0 !important; padding-bottom: 0 !important;}</style>', unsafe_allow_html=True)
     selected_image_path = image_files[st.session_state.current_idx]
     selected_image_name = os.path.basename(selected_image_path)
     try:
@@ -261,4 +262,3 @@ with col3:
             except Exception as e:
                 st.error(f"Error saving annotations: {str(e)}")
 
-    

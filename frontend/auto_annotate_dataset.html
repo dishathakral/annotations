@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Auto-Annotate Dataset</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="container">
+    <h1>Auto-Annotate Dataset</h1>
+
+    <button id="complete-btn">📦 Complete Dataset</button>
+    <button id="manual-btn">📝 Select Images Manually</button>
+    <button id="random-btn">🎲 Random Subset</button>
+
+    <div id="manual-section" style="display:none; margin-top:20px;">
+      <h3>Select Images</h3>
+      <form id="manual-form"></form>
+      <button id="manual-submit">Create Manual Subset</button>
+    </div>
+
+    <div id="random-section" style="display:none; margin-top:20px;">
+      <label>Random Subset %: <input type="number" id="random-percent" min="1" max="100" value="20">%</label>
+      <button id="random-submit">Create Random Subset</button>
+    </div>
+
+    <div id="result" style="margin-top:20px;"></div>
+  </div>
+
+  <script src="auto_annotate_dataset.js"></script>
+</body>
+</html>

@@ -8,7 +8,11 @@ document.addEventListener('DOMContentLoaded', function() {
         listDiv.innerHTML = "<p>No projects yet.</p>";
       } else {
         let html = "<h2>📂 Existing Projects</h2><ul>";
-        projects.forEach(p => html += `<li><span class='project-link' data-project='${p}'>${p}</span></li>`);
+        projects.forEach(p => {
+          html += `<li>
+            <span class='project-link' data-project='${p}'>${p}</span>
+          </li>`;
+        });
         html += "</ul>";
         listDiv.innerHTML = html;
         // Add click listeners to project names
