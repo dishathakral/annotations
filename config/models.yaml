@@ -1,0 +1,7 @@
+models:
+  YOLOv8:
+    yolov8n.pt: "YOLOv8n — small, fast, lightweight"
+    yolov8s.pt: "YOLOv8s — balanced speed and accuracy"
+  SAM:
+    sam_vit_b.pth: "SAM ViT-B — good for general segmentation"
+    sam_vit_h.pth: "SAM ViT-H — highly accurate, heavier"

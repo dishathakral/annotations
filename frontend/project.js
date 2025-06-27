@@ -104,32 +104,14 @@ document.addEventListener('DOMContentLoaded', function() {
     showMetaInfo(projectName);
   });
 
-  document.getElementById('manualBtn').onclick = function(e) {
-    e.preventDefault();
+  // Manual annotation button (existing logic)
+  document.getElementById('manualBtn').onclick = function() {
     window.location.href = `manual_annotate.html?name=${encodeURIComponent(projectName)}`;
   };
 
-  // Automatic Annotation button logic
-  const autoBtn = document.getElementById('autoBtn');
-  const autoAnnoOptions = document.getElementById('autoAnnoOptions');
-  const autoDatasetBtn = document.getElementById('autoDatasetBtn');
-  const autoModelBtn = document.getElementById('autoModelBtn');
-
-  autoBtn.onclick = function() {
-    // Toggle visibility of the two options
-    if (autoAnnoOptions.style.display === 'none' || autoAnnoOptions.style.display === '') {
-      autoAnnoOptions.style.display = 'block';
-    } else {
-      autoAnnoOptions.style.display = 'none';
-    }
-  };
-
-  autoDatasetBtn.onclick = function() {
+  // Automatic annotation button: go directly to auto_annotate_dataset.html
+  document.getElementById('autoBtn').onclick = function() {
     window.location.href = `auto_annotate_dataset.html?name=${encodeURIComponent(projectName)}`;
-  };
-
-  autoModelBtn.onclick = function() {
-    window.location.href = `auto_annotate_model.html?name=${encodeURIComponent(projectName)}`;
   };
 });
 
