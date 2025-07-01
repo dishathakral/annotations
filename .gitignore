@@ -9,6 +9,7 @@ backend/projects/*/models/
 # Ignore auto-annotation and prediction results
 backend/projects/*/auto_annotate_results.json
 backend/projects/*/predictions/
+datasets
 
 # Ignore all subset/test splits
 backend/projects/*/subset_*/
