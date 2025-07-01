@@ -34,3 +34,4 @@ backend/projects/*/subset_*/
 
 #ignore pyhton virtual environment 
 annotate_venv
+runs/
