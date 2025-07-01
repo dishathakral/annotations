@@ -119,6 +119,23 @@ function fetchAndDisplaySubsets(projectName) {
         });
 }
 
+// Utility function to get the current project name
+function getCurrentProjectName() {
+    // Try to get from localStorage (recommended for SPA)
+    let name = localStorage.getItem('currentProjectName');
+    if (name) return name;
+    // Try to get from URL query string (?name=foo or ?project=foo)
+    const params = new URLSearchParams(window.location.search);
+    name = params.get('name');
+    if (name) return name;
+    name = params.get('project');
+    if (name) return name;
+    // Try to get from a hidden input (if present in HTML)
+    const input = document.getElementById('projectNameInput');
+    if (input && input.value) return input.value;
+    return null;
+}
+
 document.addEventListener('DOMContentLoaded', function() {
     const completeBtn = document.getElementById('complete-btn');
     const manualBtn = document.getElementById('manual-btn');
@@ -129,7 +146,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const randomSection = document.getElementById('random-section');
     const randomPercent = document.getElementById('random-percent');
     const randomSubmit = document.getElementById('random-submit');
-    const projectName = getCurrentProjectName();
+    const projectName = getCurrentProjectName && getCurrentProjectName();
 
     function hideAllSections() {
         manualSection.style.display = 'none';
@@ -139,12 +156,27 @@ document.addEventListener('DOMContentLoaded', function() {
 
     if (completeBtn) {
         completeBtn.addEventListener('click', function() {
-            hideAllSections();
             if (!projectName) {
                 showAutoAnnotateStatus('Project name not found. Please select a project.', true);
                 return;
             }
-            requestAutoAnnotateDataset(projectName);
+            showAutoAnnotateStatus('Submitting auto-annotate request...');
+            fetch(`${BACKEND_URL}/api/projects/${projectName}/auto_annotate_request`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({})
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.message) {
+                    showAutoAnnotateStatus(data.message);
+                } else {
+                    showAutoAnnotateStatus('Error: ' + (data.error || 'Unknown error'), true);
+                }
+            })
+            .catch(error => {
+                showAutoAnnotateStatus('Request failed: ' + error, true);
+            });
         });
     }
 
@@ -259,17 +291,32 @@ document.addEventListener('DOMContentLoaded', function() {
     const modelSelectStatus = document.getElementById('modelSelectStatus');
 
     async function fetchModelList() {
-      const res = await fetch(`${BACKEND_URL}/api/models/list`);
-      return await res.json();
+      try {
+        const res = await fetch(`${BACKEND_URL}/api/models/list`);
+        return await res.json();
+      } catch (e) {
+        showAutoAnnotateStatus('Failed to fetch model list from backend.', true);
+        return {};
+      }
     }
     async function fetchModelDescriptions() {
-      const res = await fetch(`${BACKEND_URL}/api/models/descriptions`);
-      return await res.json();
+      try {
+        const res = await fetch(`${BACKEND_URL}/api/models/descriptions`);
+        return await res.json();
+      } catch (e) {
+        return {};
+      }
     }
 
     async function setupModelSelection() {
       let modelList = await fetchModelList();
       let modelDescriptions = await fetchModelDescriptions();
+      if (!modelFamilySel || !modelVersionSel) return;
+      if (!modelList || Object.keys(modelList).length === 0) {
+        modelFamilySel.innerHTML = '<option value="">No models found</option>';
+        modelVersionSel.innerHTML = '<option value="">Select version</option>';
+        return;
+      }
       modelFamilySel.innerHTML = '<option value="">Select family</option>' +
         Object.keys(modelList).map(fam => `<option value="${fam}">${fam}</option>`).join('');
       modelFamilySel.onchange = function() {
@@ -311,101 +358,169 @@ document.addEventListener('DOMContentLoaded', function() {
     function closeAutoAnnotateModal() {
         document.getElementById('autoAnnotateModal').style.display = 'none';
     }
-    document.getElementById('closeAutoAnnotateModal').onclick = closeAutoAnnotateModal;
+    const closeModalBtn = document.getElementById('closeAutoAnnotateModal');
+    if (closeModalBtn) closeModalBtn.onclick = closeAutoAnnotateModal;
     window.onclick = function(event) {
         const modal = document.getElementById('autoAnnotateModal');
         if (event.target === modal) closeAutoAnnotateModal();
     };
 
     // --- Start Auto-Annotate button logic ---
-    const startAutoAnnotateBtn = document.getElementById('start-auto-annotate-btn');
+    const startAutoAnnotateBtn = document.getElementById('startAutoAnnotateBtn');
     if (startAutoAnnotateBtn) {
         startAutoAnnotateBtn.addEventListener('click', function() {
-            if (!projectName) {
-                showAutoAnnotateStatus('Project name not found. Please select a project.', true);
+            const selectedModelFamily = modelFamilySel.value;
+            const selectedModelVersion = modelVersionSel.value;
+            if (!selectedModelFamily || !selectedModelVersion) {
+                showAutoAnnotateStatus('Please select both model family and version.', true);
                 return;
             }
-            // Get selected model family, version, and subset from UI/localStorage
-            const modelFamily = modelFamilySel.value || localStorage.getItem('selectedModelFamily');
-            const modelVersion = modelVersionSel.value || localStorage.getItem('selectedModelVersion');
-            const subset = localStorage.getItem(`selectedSubset_${projectName}`);
-            if (!modelFamily || !modelVersion || !subset) {
-                showAutoAnnotateStatus('Please select a model family, model version, and subset before starting auto-annotate.', true);
+            // Here you would typically send a request to start the auto-annotation process
+            showAutoAnnotateStatus(`Auto-annotation started with model ${selectedModelFamily} / ${selectedModelVersion}`);
+        });
+    }
+
+    // --- Auto Label With This Model button logic ---
+    const autoLabelBtn = document.getElementById('start-auto-annotate-btn');
+    if (autoLabelBtn) {
+        autoLabelBtn.addEventListener('click', async function() {
+            const modelFamilySel = document.getElementById('modelFamily');
+            const modelVersionSel = document.getElementById('modelVersion');
+            const projectName = getCurrentProjectName();
+            const selectedModelFamily = modelFamilySel.value;
+            const selectedModelVersion = modelVersionSel.value;
+            if (!selectedModelFamily || !selectedModelVersion) {
+                showAutoAnnotateStatus('Please select both model family and version.', true);
                 return;
             }
-            // Save to backend
-            fetch(`${BACKEND_URL}/api/projects/${projectName}/save_auto_annotate_config`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    model_family: modelFamily,
-                    model_version: modelVersion,
-                    subset: subset
-                })
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.message) {
-                    // Fetch subset image count for modal
-                    fetch(`${BACKEND_URL}/projects/${projectName}/${subset}`)
-                        .then(resp => resp.json())
-                        .then(subsetData => {
-                            const images = subsetData.images || [];
-                            showAutoAnnotateModal(`
-                                <div style='font-size:1.15rem;margin-bottom:12px;'>✅ Model config saved successfully!</div>
-                                <div style='margin-bottom:10px;'><b>Model:</b> ${modelFamily} / ${modelVersion}</div>
-                                <div style='margin-bottom:18px;'><b>Images in subset:</b> ${images.length}</div>
-                                <div id='inferenceProgress' style='margin-bottom:12px;'></div>
-                                <button id='startAutoLabelBtn' class='primary-btn' style='font-size:1.08rem;padding:10px 22px;'>Start Auto Label</button>
-                            `);
-                            document.getElementById('startAutoLabelBtn').onclick = function() {
-                                document.getElementById('startAutoLabelBtn').disabled = true;
-                                document.getElementById('startAutoLabelBtn').textContent = 'Running...';
-                                // Use SSE for progress
-                                const progressDiv = document.getElementById('inferenceProgress');
-                                const evtSource = new EventSource(`${BACKEND_URL.replace('http', 'http')}/api/projects/${projectName}/run_inference`);
-                                evtSource.onmessage = function(event) {
-                                    if (event.data) {
-                                        progressDiv.textContent = event.data;
-                                        // Highlight errors in red
-                                        if (event.data.includes('Error')) {
-                                            progressDiv.style.color = 'red';
-                                        } else {
-                                            progressDiv.style.color = '';
+            // Get selected subset from localStorage (or fallback to first subset)
+            let selectedSubset = localStorage.getItem(`selectedSubset_${projectName}`);
+            let numImages = 0;
+            let subsetName = '';
+            if (selectedSubset) {
+                subsetName = selectedSubset;
+                // Fetch subset json to get image count
+                try {
+                    const resp = await fetch(`${BACKEND_URL}/projects/${projectName}/${selectedSubset}`);
+                    const data = await resp.json();
+                    numImages = (data.images || []).length;
+                } catch (e) { numImages = 0; }
+            } else {
+                // Try to get first available subset
+                try {
+                    const resp = await fetch(`${BACKEND_URL}/api/projects/${projectName}/subsets`);
+                    const subsets = await resp.json();
+                    if (subsets.length > 0) {
+                        subsetName = subsets[0].json;
+                        const resp2 = await fetch(`${BACKEND_URL}/projects/${projectName}/${subsetName}`);
+                        const data2 = await resp2.json();
+                        numImages = (data2.images || []).length;
+                    }
+                } catch (e) { numImages = 0; }
+            }
+            // Show modal with info and Start button
+            let html = `<h2>Auto Label With This Model</h2>`;
+            html += `<div><b>Model Family:</b> ${selectedModelFamily}</div>`;
+            html += `<div><b>Model Version:</b> ${selectedModelVersion}</div>`;
+            html += `<div><b>Subset:</b> ${subsetName ? subsetName : 'None selected'}</div>`;
+            html += `<div><b>Number of Images:</b> ${numImages}</div>`;
+            if (!subsetName) {
+                html += `<div style='color:red;margin-top:10px;'>No subset selected or available.</div>`;
+            } else {
+                html += `<button id='confirmStartAutoLabelBtn' class='primary-btn' style='margin-top:18px;'>Start Auto Label</button>`;
+            }
+            showAutoAnnotateModal(html);
+            // Add event for confirm button
+            setTimeout(() => {
+                const confirmBtn = document.getElementById('confirmStartAutoLabelBtn');
+                if (confirmBtn) {
+                    confirmBtn.onclick = async function() {
+                        // Send config to backend (save_auto_annotate_config)
+                        showAutoAnnotateStatus('Starting auto-labeling...');
+                        try {
+                            const resp = await fetch(`${BACKEND_URL}/api/projects/${projectName}/save_auto_annotate_config`, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                    model_family: selectedModelFamily,
+                                    model_version: selectedModelVersion,
+                                    subset: subsetName
+                                })
+                            });
+                            const data = await resp.json();
+                            if (data.message) {
+                                // After config is saved, trigger inference
+                                showAutoAnnotateStatus('Auto-labeling started! Running inference...');
+                                try {
+                                    const inferResp = await fetch(`${BACKEND_URL}/api/projects/${projectName}/run_auto_label`, {
+                                        method: 'POST',
+                                        headers: { 'Content-Type': 'application/json' }
+                                    });
+                                    const inferData = await inferResp.json();
+                                    if (inferData.message) {
+                                        showAutoAnnotateStatus('Inference complete! ' + inferData.message);
+                                        // Add View Predictions button
+                                        const statusDiv = document.getElementById('autoAnnotateStatus');
+                                        if (statusDiv) {
+                                            const viewBtn = document.createElement('button');
+                                            viewBtn.textContent = 'View Predictions';
+                                            viewBtn.style.marginLeft = '12px';
+                                            viewBtn.onclick = function() {
+                                                // Open the new predictions viewer page with project and subset as params (same tab)
+                                                window.location.href = `view_predictions.html?project=${encodeURIComponent(projectName)}&subset=${encodeURIComponent(subsetName)}`;
+                                            };
+                                            statusDiv.appendChild(viewBtn);
                                         }
-                                        if (event.data.includes('complete') || event.data.includes('Error')) {
-                                            evtSource.close();
-                                            document.getElementById('startAutoLabelBtn').disabled = false;
-                                            document.getElementById('startAutoLabelBtn').textContent = 'Start Auto Label';
-                                        }
+                                    } else if (inferData.error) {
+                                        showAutoAnnotateStatus('Inference error: ' + inferData.error, true);
+                                    } else {
+                                        showAutoAnnotateStatus('Unknown error occurred during inference.', true);
                                     }
-                                };
-                                evtSource.onerror = function(err) {
-                                    progressDiv.textContent = 'Error during inference.';
-                                    evtSource.close();
-                                    document.getElementById('startAutoLabelBtn').disabled = false;
-                                    document.getElementById('startAutoLabelBtn').textContent = 'Start Auto Label';
-                                };
-                            };
-                        });
-                } else {
-                    showAutoAnnotateModal(`<div style='color:red;'>Error: ${data.error || 'Unknown error'}</div>`);
+                                } catch (e) {
+                                    showAutoAnnotateStatus('Inference request failed: ' + e, true);
+                                }
+                                closeAutoAnnotateModal();
+                            } else if (data.error) {
+                                showAutoAnnotateStatus('Error: ' + data.error, true);
+                            } else {
+                                showAutoAnnotateStatus('Unknown error occurred while saving config.', true);
+                            }
+                        } catch (e) {
+                            showAutoAnnotateStatus('Request failed: ' + e, true);
+                        }
+                    };
                 }
-            })
-            .catch(error => {
-                showAutoAnnotateModal(`<div style='color:red;'>Request failed: ${error}</div>`);
-            });
+            }, 100);
         });
     }
 });
 
-// Example placeholder for getting the project name
-function getCurrentProjectName() {
-    // Get project name from URL query string, e.g. ?name=gg
-    const params = new URLSearchParams(window.location.search);
-    return params.get('name') || null;
-}
+// New code to fetch model families and versions
+document.addEventListener('DOMContentLoaded', async function() {
+    const modelFamilySel = document.getElementById('modelFamily');
+    const modelVersionSel = document.getElementById('modelVersion');
 
-// Example usage:
-// requestAutoAnnotateDataset('my_project', { option1: 'value1' });
-// Call this function when the user selects the complete dataset auto-annotate option.
+    async function fetchModelFamilies() {
+        const res = await fetch(`${BACKEND_URL}/api/models/families`);
+        return await res.json();
+    }
+
+    async function fetchModelVersions(family) {
+        const res = await fetch(`${BACKEND_URL}/api/models/versions?family=${encodeURIComponent(family)}`);
+        return await res.json();
+    }
+
+    // Populate model families
+    const families = await fetchModelFamilies();
+    modelFamilySel.innerHTML = '<option value="">Select family</option>' +
+        families.map(fam => `<option value="${fam}">${fam}</option>`).join('');
+
+    modelFamilySel.onchange = async function() {
+        const fam = modelFamilySel.value;
+        modelVersionSel.innerHTML = '<option value="">Select version</option>';
+        if (fam) {
+            const versions = await fetchModelVersions(fam);
+            modelVersionSel.innerHTML += versions.map(ver => `<option value="${ver}">${ver}</option>`).join('');
+        }
+    };
+});

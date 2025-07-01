@@ -235,13 +235,38 @@ def create_random_subset(project_name):
 @app.route('/api/models/list', methods=['GET'])
 def list_models():
     result = {}
+    allowed_exts = ('.pt', '.pth', '.onnx', '.ckpt', '.bin', '.h5', '.tflite')
     if not os.path.exists(MODELS_DIR):
+        print(f"MODELS_DIR does not exist: {MODELS_DIR}")
         return jsonify(result)
     for family in os.listdir(MODELS_DIR):
         fam_path = os.path.join(MODELS_DIR, family)
         if os.path.isdir(fam_path):
-            result[family] = [f for f in os.listdir(fam_path) if os.path.isfile(os.path.join(fam_path, f))]
+            versions = [f for f in os.listdir(fam_path)
+                        if os.path.isfile(os.path.join(fam_path, f)) and f.lower().endswith(allowed_exts)]
+            if versions:
+                result[family] = versions
+    print(f"/api/models/list result: {result}")  # Debug print
     return jsonify(result)
+
+@app.route('/api/models/families', methods=['GET'])
+def get_model_families():
+    if not os.path.exists(MODELS_DIR):
+        return jsonify([])
+    families = [f for f in os.listdir(MODELS_DIR) if os.path.isdir(os.path.join(MODELS_DIR, f))]
+    return jsonify(families)
+
+@app.route('/api/models/versions', methods=['GET'])
+def get_model_versions():
+    family = request.args.get('family')
+    if not family:
+        return jsonify([])
+    fam_path = os.path.join(MODELS_DIR, family)
+    allowed_exts = ('.pt', '.pth', '.onnx', '.ckpt', '.bin', '.h5', '.tflite')
+    if not os.path.isdir(fam_path):
+        return jsonify([])
+    versions = [f for f in os.listdir(fam_path) if os.path.isfile(os.path.join(fam_path, f)) and f.lower().endswith(allowed_exts)]
+    return jsonify(versions)
 
 @app.route('/api/models/descriptions', methods=['GET'])
 def get_model_descriptions():
@@ -336,87 +361,65 @@ def get_auto_annotate_config(project_name):
         config = json.load(f)
     return jsonify(config)
 
-@app.route('/api/projects/<project_name>/run_inference', methods=['POST'])
-def run_inference(project_name):
+@app.route('/api/projects/<project_name>/run_auto_label', methods=['POST'])
+def run_auto_label(project_name):
     project_dir = os.path.join(PROJECTS_DIR, project_name)
     config_path = os.path.join(project_dir, 'auto_annotate_config.json')
     if not os.path.exists(config_path):
-        return jsonify({'error': 'Config not found'}), 404
+        return jsonify({'error': 'Auto-annotate config not found'}), 404
     with open(config_path, 'r', encoding='utf-8') as f:
         config = json.load(f)
     model_family = config.get('model_family')
     model_version = config.get('model_version')
     subset = config.get('subset')
-    subset_json_path = os.path.join(project_dir, subset)
-    if not os.path.exists(subset_json_path):
-        return jsonify({'error': 'Subset file not found'}), 404
-    with open(subset_json_path, 'r', encoding='utf-8') as f:
+    if not (model_family and model_version and subset):
+        return jsonify({'error': 'Incomplete config'}), 400
+    # Model path
+    model_path = os.path.join(MODELS_DIR, model_family, model_version)
+    if not os.path.exists(model_path):
+        return jsonify({'error': f'Model file not found: {model_path}'}), 404
+    # Subset path
+    subset_path = os.path.join(project_dir, subset)
+    if not os.path.exists(subset_path):
+        return jsonify({'error': f'Subset file not found: {subset_path}'}), 404
+    with open(subset_path, 'r', encoding='utf-8') as f:
         subset_data = json.load(f)
     images = subset_data.get('images', [])
     images_dir = os.path.join(project_dir, 'images')
-    results = {"images": {}, "categories": []}
-    
-    def generate():
-        import traceback
-        try:
-            total = len(images)
-            if total == 0:
-                yield f"data: No images to process.\n\n"
-                return
-            if model_family.lower() == "yolov8" and YOLO and cv2:
-                model_path = os.path.join(MODELS_DIR, model_family, model_version)
-                model = YOLO(model_path)
-                for idx, img_name in enumerate(images):
-                    img_path = os.path.join(images_dir, img_name)
-                    if not os.path.exists(img_path):
-                        yield f"data: Error: Image {img_name} not found.\n\n"
-                        continue
-                    img = cv2.imread(img_path)
-                    h, w = img.shape[:2]
-                    preds = model(img_path)
-                    annots = []
-                    for i, det in enumerate(preds[0].boxes):
-                        bbox = det.xywh[0].tolist()
-                        label = model.names[int(det.cls[0])]
-                        annots.append({
-                            "id": i + 1,
-                            "bbox": bbox,
-                            "label": label
-                        })
-                        if label not in results["categories"]:
-                            results["categories"].append(label)
-                    results["images"][img_name] = {
-                        "width": w,
-                        "height": h,
-                        "annotations": annots
-                    }
-                    yield f"data: Inferred {idx+1}/{total} images\n\n"
-                    time.sleep(0.1)  # Simulate progress
-            elif model_family.lower() == "sam":
-                for idx, img_name in enumerate(images):
-                    # Add your SAM logic here
-                    results["images"][img_name] = {
-                        "width": 0,
-                        "height": 0,
-                        "annotations": []
-                    }
-                    yield f"data: Inferred {idx+1}/{total} images (SAM stub)\n\n"
-                    time.sleep(0.1)
-            else:
-                yield f"data: Error: Unknown model family or dependencies missing.\n\n"
-                return
-            # Save results in the subset folder
-            out_path = os.path.join(project_dir, os.path.dirname(subset), "annotations.json")
-            with open(out_path, 'w', encoding='utf-8') as f:
-                json.dump(results, f, indent=2)
-            yield f"data: Inference complete for {total} images. Results saved.\n\n"
-        except Exception as e:
-            import traceback
-            tb = traceback.format_exc()
-            yield f"data: Error: {type(e).__name__}: {str(e)}\nTraceback:\n{tb}\n\n"
+    results = {}
+    if YOLO is None:
+        return jsonify({'error': 'ultralytics not installed on server'}), 500
+    try:
+        model = YOLO(model_path)
+        for img_name in images:
+            img_path = os.path.join(images_dir, img_name)
+            if not os.path.exists(img_path):
+                continue
+            pred = model(img_path)
+            # Convert prediction to serializable format (e.g., boxes, scores, classes)
+            pred_data = []
+            for r in pred:
+                boxes = r.boxes.xyxy.cpu().numpy().tolist() if hasattr(r, 'boxes') and hasattr(r.boxes, 'xyxy') else []
+                scores = r.boxes.conf.cpu().numpy().tolist() if hasattr(r, 'boxes') and hasattr(r.boxes, 'conf') else []
+                classes = r.boxes.cls.cpu().numpy().tolist() if hasattr(r, 'boxes') and hasattr(r.boxes, 'cls') else []
+                pred_data.append({'boxes': boxes, 'scores': scores, 'classes': classes})
+            results[img_name] = pred_data
+        # Save results
+        out_path = os.path.join(project_dir, 'auto_annotate_results.json')
+        with open(out_path, 'w', encoding='utf-8') as f:
+            json.dump(results, f, indent=2)
+        return jsonify({'message': f'Auto-labeling complete! Results saved to auto_annotate_results.json', 'num_images': len(results)})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
-    
-    return Response(stream_with_context(generate()), mimetype='text/event-stream')
+@app.route('/projects/<project_name>/auto_annotate_results.json')
+def serve_auto_annotate_results(project_name):
+    project_dir = os.path.join(PROJECTS_DIR, project_name)
+    results_path = os.path.join(project_dir, 'auto_annotate_results.json')
+    if not os.path.exists(results_path):
+        return jsonify({'error': 'Results file not found'}), 404
+    return send_from_directory(project_dir, 'auto_annotate_results.json')
+
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run(debug=False)
