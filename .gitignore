@@ -1,1 +1,35 @@
-venv
+# Ignore all images and large data
+backend/projects/*/images/
+backend/projects/*/models/
+*.pt
+*.pth
+*.h5
+*.ckpt
+
+# Ignore auto-annotation and prediction results
+backend/projects/*/auto_annotate_results.json
+backend/projects/*/predictions/
+
+# Ignore all subset/test splits
+backend/projects/*/subset_*/
+
+# Ignore Streamlit cache and Python bytecode
+**/__pycache__/
+**/.streamlit/
+*.pyc
+
+# Ignore common binary and archive files
+*.zip
+*.tar
+*.tar.gz
+*.exe
+*.dll
+*.mp4
+*.avi
+*.mov
+
+# VSCode settings (optional)
+.vscode/
+
+#ignore pyhton virtual environment 
+annotate_venv
