@@ -1,0 +1,40 @@
+/* Copied from frontend/style.css */
+/* ...original CSS code from frontend/style.css... */
+body {
+  font-family: Arial, sans-serif;
+  margin: 40px;
+  background: #f7f7f7;
+}
+h1 {
+  color: #333;
+}
+button {
+  padding: 10px 20px;
+  font-size: 16px;
+  margin-bottom: 20px;
+}
+#projectList {
+  margin-top: 20px;
+}
+.project-link {
+  color: #1976d2;
+  cursor: pointer;
+  text-decoration: underline;
+}
+.project-link:hover {
+  color: #0d47a1;
+  background: #e3f2fd;
+}
+#subset-image-scroll {
+  max-height: 420px !important;
+  height: 420px !important;
+  overflow-y: auto !important;
+  border: 1px solid #eee;
+  padding: 10px 0 10px 10px;
+  margin-bottom: 12px;
+  background: #fafbfc;
+  box-sizing: border-box;
+}
+#subset-section {
+  flex-shrink: 0;
+}

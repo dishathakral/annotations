@@ -28,10 +28,35 @@ CONFIG_DIR = os.path.abspath(os.path.join(BASE_DIR, '..', 'config'))
 MODELS_YAML = os.path.join(CONFIG_DIR, 'models.yaml')
 LABELS_FILE = os.path.join(CONFIG_DIR, 'labels.txt')
 
-# Add this route for the root URL
+
+# Serve the main frontend page
+from flask import render_template
+
 @app.route('/')
 def home():
-    return "Backend is running!"
+    return render_template('index.html')
+@app.route('/api/projects/<project_name>/delete_subset', methods=['POST'])
+def delete_subset(project_name):
+    """Delete a subset folder and its JSON for a project."""
+    data = request.get_json() or {}
+    subset_name = data.get('subset_name')
+    if not subset_name:
+        return jsonify({'error': 'No subset_name provided'}), 400
+    project_dir = os.path.join(PROJECTS_DIR, project_name)
+    subset_dir = os.path.join(project_dir, subset_name)
+    if not os.path.exists(subset_dir):
+        return jsonify({'error': 'Subset not found'}), 404
+    try:
+        # Remove all files in the subset directory, then the directory itself
+        for root, dirs, files in os.walk(subset_dir, topdown=False):
+            for name in files:
+                os.remove(os.path.join(root, name))
+            for name in dirs:
+                os.rmdir(os.path.join(root, name))
+        os.rmdir(subset_dir)
+        return jsonify({'message': f'Subset {subset_name} deleted.'})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/api/projects', methods=['GET'])
 def list_projects():
@@ -420,6 +445,26 @@ def serve_auto_annotate_results(project_name):
         return jsonify({'error': 'Results file not found'}), 404
     return send_from_directory(project_dir, 'auto_annotate_results.json')
 
+@app.route('/project.html')
+def serve_project_html():
+    return render_template('project.html')
+
+@app.route('/auto_annotate_dataset.html')
+def serve_auto_annotate_dataset_html():
+    return render_template('auto_annotate_dataset.html')
+
+@app.route('/manual_annotate.html')
+def serve_manual_annotate_html():
+    return render_template('manual_annotate.html')
+
+@app.route('/view_predictions.html')
+def serve_view_predictions_html():
+    return render_template('view_predictions.html')
+
+@app.route('/projects')
+def serve_projects_html():
+    return render_template('index.html')
+
 
 if __name__ == '__main__':
-    app.run(debug=False)
+    app.run(debug=False,host='0.0.0.0')

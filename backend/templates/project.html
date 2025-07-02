@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Project Details</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <div class="container">
+    <h1 id="projectTitle"></h1>
+    <div id="uploadSection">
+      <h2>Step 1: Import Data (Upload Folder as .zip)</h2>
+      <input type="file" id="zipInput" accept=".zip" />
+      <button id="uploadBtn">Upload</button>
+      <div id="uploadMsg"></div>
+    </div>
+    <div id="metaSection">
+      <h2>Step 2: Project Metadata</h2>
+      <div id="metaInfo"></div>
+    </div>
+    <div id="annotateSection">
+      <h2>Step 3: Annotate Data</h2>
+      <button id="manualBtn">📝 Manually Annotate Data</button>
+      <button id="autoBtn" onclick="window.location.href='auto_annotate_dataset.html'">⚡ Automatic Annotation</button>
+    </div>
+    <button onclick="window.location.href='index.html'">⬅️ Back to Home</button>
+  </div>
+  <script src="{{ url_for('static', filename='project.js') }}"></script>
+</body>
+</html>
